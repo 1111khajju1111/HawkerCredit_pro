@@ -1,7 +1,7 @@
 import os
 import secrets
 import warnings
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _resolve_jwt_secret() -> str:
@@ -65,18 +65,29 @@ class Settings(BaseSettings):
         "sqlite:///./hawkercredit.db"
     )
 
-    # CORS
-    CORS_ORIGINS: list = [
-        origin.strip()
-        for origin in os.getenv(
-            "CORS_ORIGINS",
-            "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000"
-        ).split(",")
-        if origin.strip()
-    ]
+    # Keep the environment-facing value as a plain string. pydantic-settings
+    # otherwise attempts JSON decoding for list fields before validators run,
+    # which makes simple Render values such as "https://example.com" fail.
+    CORS_ORIGINS: str = (
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000,"
+        "http://localhost:8000"
+    )
 
-    class Config:
-        case_sensitive = True
+    @property
+    def cors_origins(self) -> list[str]:
+        raw = (self.CORS_ORIGINS or "").strip()
+        if not raw:
+            return []
+        if raw.startswith("["):
+            import json
+            parsed = json.loads(raw)
+            if not isinstance(parsed, list):
+                raise ValueError("CORS_ORIGINS JSON value must be an array")
+            return [str(v).strip() for v in parsed if str(v).strip()]
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+    model_config = SettingsConfigDict(case_sensitive=True)
 
 
 settings = Settings()

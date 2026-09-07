@@ -10,16 +10,8 @@ from app.core.rate_limit import limiter
 from app.db.database import engine, Base, get_db, SessionLocal
 from app.ai.model_registry import register_persisted_model
 
-# Schema management is handled by Alembic before application startup.
-try:
-    from alembic import command
-    from alembic.config import Config as AlembicConfig
-    _alembic_cfg = AlembicConfig(os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic.ini"))
-    command.upgrade(_alembic_cfg, "head")
-except Exception as _migration_error:
-    if settings.ENVIRONMENT.lower() == "production":
-        raise RuntimeError(f"Database migration failed in production: {_migration_error}") from _migration_error
-    print(f"Startup migration warning: {_migration_error}")
+# Database schema is managed by Alembic. Render runs `alembic upgrade head`
+# as the service pre-deploy command; local development can run it manually.
 from app.demo_seed import ensure_demo_dataset
 from app.api.v1 import (
     auth, vendors, transactions, expenses, inventory,
@@ -59,7 +51,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Set up CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

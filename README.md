@@ -19,7 +19,7 @@ Key retained capabilities: FastAPI + PostgreSQL/SQLAlchemy, JWT/RBAC, vendor iso
 - Added deterministic 100-vendor → consent-filtered → ranked/diversified → 10-vendor QAOA candidate selection.
 - Removed silent category omission from the QUBO builder: the QUBO now rejects a candidate set whose category count exceeds its configured concentration representation.
 - Reused persisted optimization results on the benchmark screen when all relevant constraints match, avoiding unnecessary second QAOA runs.
-- Added Alembic migration infrastructure and startup migration execution.
+- Added Alembic migration infrastructure with the Docker entrypoint running `alembic upgrade head` before Uvicorn.
 - Added the missing voice-demo UI from the companion edition.
 - Kept `/health` lightweight and independent of database/quantum execution.
 - Removed development/backup artifacts from the final package.
@@ -52,7 +52,7 @@ Backend layers:
 4. Provide `DATABASE_URL`, `CORS_ORIGINS`, `JWT_SECRET`, and `STAFF_BOOTSTRAP_SECRET`.
 5. Set `DEMO_SEED_ON_STARTUP=true` for the hackathon demo. Use `false` for a clean non-demo deployment.
 6. Render exposes `/health` for health checks.
-7. The container runs Alembic to `head` before application initialization. The app also keeps a defensive startup warning rather than crashing solely because migration tooling is temporarily unavailable.
+7. The Docker entrypoint runs `alembic upgrade head` before Uvicorn starts, so the Free Render plan does not depend on Render's paid pre-deploy command feature. Local development can run `alembic upgrade head` manually.
 
 ## 6. PostgreSQL
 

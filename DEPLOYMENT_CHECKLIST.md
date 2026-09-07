@@ -54,7 +54,7 @@
 - [ ] No real secrets committed
 
 ## Application smoke test
-- [ ] Database migration
+- [ ] Database migration runs automatically from the Docker entrypoint (`alembic upgrade head`)
 - [ ] Demo seed
 - [ ] Vendor login
 - [ ] Vendor dashboard

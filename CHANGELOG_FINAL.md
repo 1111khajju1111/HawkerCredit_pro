@@ -17,7 +17,7 @@
 ## Data and deployment
 - Added deterministic synthetic seed initialization.
 - Changed application default demo seeding to opt-in (`false`) while Render demo configuration explicitly enables it.
-- Added Alembic migration infrastructure and startup migration execution.
+- Added Alembic migration infrastructure with the Docker entrypoint running `alembic upgrade head` before Uvicorn.
 - Kept PostgreSQL configuration deployment-ready and `/health` inexpensive.
 - Cleaned repository ignore artifacts and temporary/development outputs.
 
@@ -49,3 +49,13 @@
 - Exhaustive QUBO→Ising energy equivalence verification passed on the final builder for a small problem.
 - Static scans were performed for localhost references, imports, secrets, fake-live language, and conflicting implementations.
 - Full dependency-based pytest and Next.js production build were attempted but could not be executed because the environment had no network access and required packages were not cached. This limitation is explicitly documented rather than being reported as a pass.
+
+## Deployment hardening follow-up — 2026-09-07
+- Fixed the backend Docker image so `alembic.ini` and the complete `alembic/` migration tree are included in the image.
+- Changed the Docker entrypoint to run `alembic upgrade head` before starting Uvicorn, avoiding dependency on Render's paid pre-deploy feature on the Free plan.
+- Removed the obsolete SQLite URL from `alembic.ini`; the Alembic environment derives the database URL from application settings.
+- Fixed `CORS_ORIGINS` parsing so Render can supply either a plain URL, comma-separated URLs, or a JSON array without Pydantic settings JSON-decoding failures.
+- Removed duplicate migration execution from `app.main`.
+- Corrected `vercel.json` so Vercel's `frontend` Root Directory is not prefixed by a second `cd frontend`.
+- Revalidated Alembic migration execution against a temporary SQLite database and re-ran Python/static deployment checks.
+- Confirmed that Docker build execution itself could not be run in this environment because the Docker CLI is unavailable.
