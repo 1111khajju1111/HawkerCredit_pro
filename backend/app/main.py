@@ -9,9 +9,6 @@ from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.db.database import engine, Base, get_db, SessionLocal
 from app.ai.model_registry import register_persisted_model
-
-# Database schema is managed by Alembic. Render runs `alembic upgrade head`
-# as the service pre-deploy command; local development can run it manually.
 from app.demo_seed import ensure_demo_dataset
 from app.api.v1 import (
     auth, vendors, transactions, expenses, inventory,
@@ -19,6 +16,7 @@ from app.api.v1 import (
 )
 
 # Initialize database tables and register the persisted credit model.
+Base.metadata.create_all(bind=engine)
 try:
     with SessionLocal() as _startup_db:
         register_persisted_model(_startup_db)
@@ -28,7 +26,7 @@ except Exception as _startup_error:
 
 # Demo environments can opt into an idempotent synthetic dataset on startup.
 # This never clears existing rows. Enabled by default in the production-demo bundle; set DEMO_SEED_ON_STARTUP=false for a clean non-demo deployment.
-if os.getenv("DEMO_SEED_ON_STARTUP", "false").lower() in {"1", "true", "yes"}:
+if os.getenv("DEMO_SEED_ON_STARTUP", "true").lower() in {"1", "true", "yes"}:
     try:
         ensure_demo_dataset()
     except Exception as _demo_seed_error:
@@ -51,7 +49,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Set up CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,6 +69,18 @@ app.include_router(portfolio.router, prefix=f"{settings.API_V1_STR}/portfolio", 
 app.include_router(consent.router, prefix=f"{settings.API_V1_STR}/consent", tags=["Consent Management"])
 app.include_router(audit.router, prefix=f"{settings.API_V1_STR}/audit-logs", tags=["Audit Logging"])
 app.include_router(admin.router, prefix=f"{settings.API_V1_STR}/admin", tags=["Admin & Model Monitoring"])
+
+# Root route: keeps platform default health checks (Render) and stray
+# browser/UptimeRobot hits against "/" from 404ing.
+@app.get("/")
+def root():
+    return {
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "status": "HEALTHY",
+        "docs": "/docs",
+        "health": "/health",
+    }
 
 # Health Check Endpoints
 @app.get("/health")

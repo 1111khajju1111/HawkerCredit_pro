@@ -198,7 +198,6 @@ class QuantumRun(Base):
     __tablename__ = "quantum_runs"
 
     run_id = Column(String, primary_key=True, default=generate_uuid)
-    owner_user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     problem_size = Column(Integer, default=0)
     number_of_variables = Column(Integer, default=0)
     qubo_parameters = Column(JSON, default=dict)

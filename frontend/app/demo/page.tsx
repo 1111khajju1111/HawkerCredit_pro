@@ -52,7 +52,7 @@ export default function SihDemoPage() {
         }
       } else if (currentStep >= 12 && currentStep <= 16) {
         if (user?.role === 'LENDER' || user?.role === 'ADMIN') {
-          const qRun = await api.runQuantumOptimize(1000000, 0.45, 2, 1024);
+          const qRun = await api.runQuantumOptimize(1000000, 0.25, 2, 1024);
           setDemoState((prev: any) => ({ ...prev, quantumRun: qRun }));
         }
       }

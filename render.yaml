@@ -1,3 +1,17 @@
+# Render Blueprint — one-shot deploy of the HawkerCredit backend + a managed
+# Postgres database. In the Render dashboard: New -> Blueprint -> point at
+# this repo. Render reads this file automatically.
+#
+# After it deploys, copy the service URL (https://<name>.onrender.com) into
+# the frontend's NEXT_PUBLIC_API_URL / BACKEND_URL on Vercel, and add your
+# Vercel URL to this service's CORS_ORIGINS env var (see backend/.env.example).
+
+databases:
+  - name: hawkercredit-db
+    plan: free
+    databaseName: hawkercredit
+    user: hawkercredit
+
 services:
   - type: web
     name: hawkercredit-backend
@@ -12,11 +26,15 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
-      - key: DATABASE_URL
-        sync: false
-      - key: CORS_ORIGINS
-        sync: false
       - key: STAFF_BOOTSTRAP_SECRET
         generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hawkercredit-db
+          property: connectionString
       - key: DEMO_SEED_ON_STARTUP
         value: "true"
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000"
+        # After the frontend is on Vercel, update this to your real Vercel
+        # URL(s), comma-separated — Render env var, not in this file.

@@ -68,6 +68,4 @@ def get_portfolio(
     portfolio = db.query(PortfolioRun).filter(PortfolioRun.portfolio_id == portfolio_id).first()
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio run not found")
-    if current_user.role != "ADMIN" and portfolio.lender_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You are not authorized to access this portfolio")
     return portfolio

@@ -15,108 +15,36 @@ from app.ai.feature_engineering import check_consent
 router = APIRouter()
 
 
-MAX_QAOA_VENDOR_CANDIDATES = 10
-MAX_QAOA_CATEGORIES = 2
-
-
-def _build_vendor_data(vendors, max_exposure_per_vendor: float = 50000.0):
-    rows = []
-    for v in vendors:
-        risk_val = (1.0 - v.credit_score.repayment_probability) if v.credit_score else 0.15
-        ret_val = 0.16 if (v.credit_score and v.credit_score.score >= 700) else 0.12
-        req_amt = min(max_exposure_per_vendor, v.credit_score.sustainable_credit_max if v.credit_score else 25000.0)
-        rows.append({
-            "vendor_id": v.vendor_id,
-            "name": v.name,
-            "business_type": v.business_type or "GENERAL",
-            "predicted_risk": risk_val,
-            "expected_return": ret_val,
-            "requested_amount": req_amt,
-        })
-    return rows
-
-
-def _select_qaoa_candidates(db, requested_vendor_ids=None, max_exposure_per_vendor: float = 50000.0):
-    """Select a deterministic, consented 10-vendor subproblem from the eligible pool.
-
-    The platform can have 100+ eligible vendors, but the demo QAOA simulator is
-    deliberately bounded to 10 vendor decision qubits. The subset is selected
-    from the full consented pool by persisted credit intelligence, with the
-    two strongest represented business categories retained so the concentration
-    constraint is represented for every category that enters the QUBO.
-    """
-    query = db.query(Vendor)
-    if requested_vendor_ids:
-        query = query.filter(Vendor.vendor_id.in_(requested_vendor_ids))
-    else:
-        query = query.order_by(Vendor.created_at.asc())
-    eligible = [v for v in query.all() if check_consent(v.vendor_id, "PORTFOLIO_MATCHING", db)]
-    if not eligible:
-        return []
-
-    data = _build_vendor_data(eligible, max_exposure_per_vendor)
-    # Deterministic category ranking, then deterministic vendor ranking.
-    category_scores = {}
-    for row in data:
-        category_scores.setdefault(row["business_type"], []).append(row)
-    if requested_vendor_ids:
-        chosen_categories = set(category_scores)
-        if len(chosen_categories) > MAX_QAOA_CATEGORIES:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Selected vendor IDs span {len(chosen_categories)} categories; the QAOA demo subproblem supports at most {MAX_QAOA_CATEGORIES}."
-            )
-    else:
-        ranked_categories = sorted(
-            category_scores.items(),
-            key=lambda kv: (
-                sum(r["expected_return"] * r["requested_amount"] for r in kv[1]),
-                len(kv[1]),
-                kv[0],
-            ),
-            reverse=True,
-        )[:MAX_QAOA_CATEGORIES]
-        chosen_categories = {name for name, _ in ranked_categories}
-    filtered = [r for r in data if r["business_type"] in chosen_categories]
-    filtered.sort(
-        key=lambda r: (
-            r["expected_return"] * r["requested_amount"],
-            r["repayment_probability"] if "repayment_probability" in r else -r["predicted_risk"],
-            r["vendor_id"],
-        ),
-        reverse=True,
-    )
-    if requested_vendor_ids:
-        filtered.sort(key=lambda r: (r["expected_return"] * r["requested_amount"], r["vendor_id"]), reverse=True)
-        return filtered[:MAX_QAOA_VENDOR_CANDIDATES]
-
-    # Round-robin by category preserves representation when one category has
-    # many more vendors than the other.
-    buckets = {c: [r for r in filtered if r["business_type"] == c] for c in chosen_categories}
-    ordered = []
-    for bucket_index in range(MAX_QAOA_VENDOR_CANDIDATES):
-        for category in sorted(buckets):
-            if buckets[category]:
-                ordered.append(buckets[category].pop(0))
-                if len(ordered) >= MAX_QAOA_VENDOR_CANDIDATES:
-                    break
-        if len(ordered) >= MAX_QAOA_VENDOR_CANDIDATES:
-            break
-    return ordered
-
-
 def run_quantum_optimization_impl(
     payload: QuantumPortfolioRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(["LENDER", "ADMIN"])),
 ):
-    # 1. Select a deterministic, consented QAOA subproblem from the full eligible pool.
-    vendors_data = _select_qaoa_candidates(db, payload.vendor_ids, payload.max_exposure_per_vendor)
-    vendors = vendors_data
-    if not vendors_data:
-        raise HTTPException(status_code=400, detail="No consented vendors available for portfolio optimization")
+    # 1. Fetch candidate vendors and require PORTFOLIO_MATCHING consent
+    if payload.vendor_ids:
+        candidates = db.query(Vendor).filter(Vendor.vendor_id.in_(payload.vendor_ids)).all()
+    else:
+        candidates = db.query(Vendor).limit(30).all()
+    vendors = [v for v in candidates if check_consent(v.vendor_id, "PORTFOLIO_MATCHING", db)][:10]
 
-    # 2. Vendor risk/return parameters are already persisted-derived in vendors_data.
+    if not vendors:
+        raise HTTPException(status_code=400, detail="No vendors available for portfolio optimization")
+
+    # 2. Extract vendor risk & return parameters
+    vendors_data = []
+    for v in vendors:
+        risk_val = (1.0 - v.credit_score.repayment_probability) if v.credit_score else 0.15
+        ret_val = 0.16 if (v.credit_score and v.credit_score.score >= 700) else 0.12
+        req_amt = min(payload.max_exposure_per_vendor, v.credit_score.sustainable_credit_max if v.credit_score else 25000.0)
+
+        vendors_data.append({
+            "vendor_id": v.vendor_id,
+            "name": v.name,
+            "business_type": v.business_type,
+            "predicted_risk": risk_val,
+            "expected_return": ret_val,
+            "requested_amount": req_amt
+        })
 
     # 3. Formulate QUBO Matrix & Ising Hamiltonian
     Q, qubo_meta, vendor_ids = build_portfolio_qubo(
@@ -194,7 +122,6 @@ def run_quantum_optimization_impl(
 
     # 6. Save QuantumRun record to DB
     q_run = QuantumRun(
-        owner_user_id=current_user.id,
         problem_size=len(vendors),
         number_of_variables=qubo_meta["num_variables"],
         qubo_parameters=qubo_meta,
@@ -315,10 +242,7 @@ def get_latest_quantum_run(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(["LENDER", "ADMIN"])),
 ):
-    q_query = db.query(QuantumRun)
-    if current_user.role != "ADMIN":
-        q_query = q_query.filter(QuantumRun.owner_user_id == current_user.id)
-    q_run = q_query.order_by(QuantumRun.created_at.desc()).first()
+    q_run = db.query(QuantumRun).order_by(QuantumRun.created_at.desc()).first()
     if not q_run:
         raise HTTPException(status_code=404, detail="No quantum optimization run has been persisted yet")
     return q_run
@@ -332,10 +256,7 @@ def get_quantum_run(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(["LENDER", "ADMIN"])),
 ):
-    q_query = db.query(QuantumRun).filter(QuantumRun.run_id == run_id)
-    if current_user.role != "ADMIN":
-        q_query = q_query.filter(QuantumRun.owner_user_id == current_user.id)
-    q_run = q_query.first()
+    q_run = db.query(QuantumRun).filter(QuantumRun.run_id == run_id).first()
     if not q_run:
         raise HTTPException(status_code=404, detail="Quantum run not found")
     return q_run
@@ -346,7 +267,7 @@ def get_quantum_run(
 def get_quantum_vs_classical_benchmark(
     request: Request,
     available_capital: float = 1000000.0,
-    max_risk_tolerance: float = 0.45,
+    max_risk_tolerance: float = 0.25,
     max_category_concentration: float = 0.40,
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(["LENDER", "ADMIN"])),
@@ -354,15 +275,8 @@ def get_quantum_vs_classical_benchmark(
     # A completed optimizer run already persisted the exact QAOA result and
     # its classical reference. Reuse it for the benchmark screen instead of
     # executing a second expensive QAOA simulation.
-    latest_query = db.query(QuantumRun)
-    if current_user.role != "ADMIN":
-        latest_query = latest_query.filter(QuantumRun.owner_user_id == current_user.id)
-    latest = latest_query.order_by(QuantumRun.created_at.desc()).first()
-    if latest and latest.result and all([
-        abs(float(latest.qubo_parameters.get("available_capital", available_capital)) - available_capital) < 0.01,
-        abs(float(latest.qubo_parameters.get("max_risk_tolerance", max_risk_tolerance)) - max_risk_tolerance) < 1e-9,
-        abs(float(latest.qubo_parameters.get("max_category_concentration", max_category_concentration)) - max_category_concentration) < 1e-9,
-    ]):
+    latest = db.query(QuantumRun).order_by(QuantumRun.created_at.desc()).first()
+    if latest and latest.result and abs(float(latest.qubo_parameters.get("available_capital", available_capital)) - available_capital) < 0.01:
         stored = latest.result
         if stored.get("classical_benchmark") and stored.get("solution_metrics"):
             q = {
@@ -394,7 +308,24 @@ def get_quantum_vs_classical_benchmark(
                 },
             }
 
-    vendors_data = _select_qaoa_candidates(db, None, 50000.0)
+    candidates = db.query(Vendor).limit(30).all()
+    vendors = [v for v in candidates if check_consent(v.vendor_id, "PORTFOLIO_MATCHING", db)][:10]
+    vendors_data = []
+    for v in vendors:
+        risk_val = (1.0 - v.credit_score.repayment_probability) if v.credit_score else 0.14
+        ret_val = 0.16 if (v.credit_score and v.credit_score.score >= 700) else 0.12
+        # Use each vendor's actual sustainable credit limit, mirroring
+        # /optimize exactly, so the benchmark page's vendor pool and the
+        # live optimizer's vendor pool are never two different data sets.
+        req_amt = v.credit_score.sustainable_credit_max if v.credit_score else 25000.0
+        vendors_data.append({
+            "vendor_id": v.vendor_id,
+            "name": v.name,
+            "business_type": v.business_type,
+            "predicted_risk": risk_val,
+            "expected_return": ret_val,
+            "requested_amount": req_amt
+        })
 
     if not vendors_data:
         raise HTTPException(status_code=400, detail="No vendors available for benchmark comparison")

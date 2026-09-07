@@ -50,6 +50,33 @@ def solve_qaoa(
     init_gammas = ([0.45, 0.75] + [0.5] * max(0, p_layers - 2))[:p_layers]
     init_betas = ([0.35, 0.60] + [0.5] * max(0, p_layers - 2))[:p_layers]
 
+    # QAOA acts on an Ising Hamiltonian, not directly on the raw QUBO
+    # coefficients. For x in {0,1}^N with x_i=(1-Z_i)/2,
+    #
+    #   x^T Q x = const + sum_i h_i Z_i + sum_{i<j} J_ij Z_i Z_j
+    #
+    # where (for a possibly non-symmetric Q)
+    #   h_i  = -Q_ii/2 - 1/4 * sum_{j!=i}(Q_ij + Q_ji)
+    #   J_ij =  1/4 * (Q_ij + Q_ji)
+    #
+    # The QUBO builder exposes the same h-vector in its metadata. Compute
+    # it here from Q so this solver remains self-contained and cannot drift
+    # from the matrix it actually receives. The omitted constant only adds a
+    # global phase and therefore does not affect QAOA sampling.
+    ising_h = np.zeros(N_total, dtype=float)
+    ising_J = np.zeros((N_total, N_total), dtype=float)
+    for i in range(N_total):
+        ising_h[i] = (
+            -0.5 * Q[i, i]
+            - 0.25 * sum(
+                Q[i, j] + Q[j, i]
+                for j in range(N_total)
+                if j != i
+            )
+        )
+        for j in range(i + 1, N_total):
+            ising_J[i, j] = 0.25 * (Q[i, j] + Q[j, i])
+
     def build_circuit(gammas: List[float], betas: List[float]):
         from qiskit import QuantumCircuit
 
@@ -57,28 +84,21 @@ def solve_qaoa(
         for q in range(N_total):
             qc.h(q)
 
-        # QAOA acts on the Ising Hamiltonian obtained from x^T Q x with
-        # x_i=(1-Z_i)/2. For a general Q, symmetrize the pair terms first.
-        # The omitted constant contributes only a global phase.
-        ising_h = np.zeros(N_total, dtype=float)
-        ising_J = np.zeros((N_total, N_total), dtype=float)
-        for i in range(N_total):
-            ising_h[i] = -0.5 * Q[i, i] - 0.25 * sum(
-                Q[i, j] + Q[j, i] for j in range(N_total) if j != i
-            )
-            for j in range(i + 1, N_total):
-                ising_J[i, j] = 0.25 * (Q[i, j] + Q[j, i])
-
         for layer in range(p_layers):
             g = gammas[layer]
             b = betas[layer]
+
+            # exp(-i * gamma * h_i Z_i) -> RZ(2*gamma*h_i)
             for i in range(N_total):
                 if abs(ising_h[i]) > 1e-9:
                     qc.rz(2 * g * ising_h[i], i)
+
+            # exp(-i * gamma * J_ij Z_i Z_j) -> RZZ(2*gamma*J_ij)
             for i in range(N_total):
                 for j in range(i + 1, N_total):
                     if abs(ising_J[i, j]) > 1e-9:
                         qc.rzz(2 * g * ising_J[i, j], i, j)
+
             for i in range(N_total):
                 qc.rx(2 * b, i)
 

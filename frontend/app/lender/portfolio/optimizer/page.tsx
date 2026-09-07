@@ -9,7 +9,7 @@ import { Sparkles, Cpu, ShieldCheck, CheckCircle2, AlertTriangle, ArrowRight, Pl
 export default function QuantumOptimizerPage() {
   useRequireAuth(['LENDER', 'ADMIN']);
   const [capital, setCapital] = useState(1000000);
-  const [riskTolerance, setRiskTolerance] = useState(0.45);
+  const [riskTolerance, setRiskTolerance] = useState(0.25);
   const [pLayers, setPLayers] = useState(2);
   const [shots, setShots] = useState(1024);
   const [running, setRunning] = useState(false);
@@ -40,7 +40,7 @@ export default function QuantumOptimizerPage() {
           classical_baseline: qRes.classical_benchmark,
           solution_metrics: qRes.solution_metrics,
           comparison: {
-            objective_diff: Number(qRes.objective_value) - Number(qRes.classical_benchmark.objective_value || 0),
+            objective_diff: Number(qRes.business_objective || 0) - Number(qRes.classical_benchmark.business_objective || 0),
             execution_time_diff_ms: (Number(qRes.execution_time) - Number(qRes.classical_benchmark.execution_time_seconds || 0)) * 1000,
             capital_utilization_diff: Number(qRes.allocated_capital) - Number(qRes.classical_benchmark.allocated_capital || 0),
           },
@@ -142,7 +142,7 @@ export default function QuantumOptimizerPage() {
             <div className="glass-card p-5 space-y-1">
               <div className="text-xs font-semibold text-gray-400">Expectation Energy & Bitstring</div>
               <div className="text-xl font-mono font-extrabold text-white truncate">{quantumResult.best_bitstring}</div>
-              <p className="text-[11px] text-gray-400">Hamiltonian E(x): {quantumResult.objective_value}</p>
+              <p className="text-[11px] text-gray-400">Expected return objective: {quantumResult.business_objective ?? '—'} · QUBO E(x): {quantumResult.objective_value}</p>
             </div>
             <div className="glass-card p-5 space-y-1">
               <div className="text-xs font-semibold text-gray-400">Post-Classical Validation</div>
@@ -190,9 +190,9 @@ export default function QuantumOptimizerPage() {
                       <td className="p-3 font-semibold text-emeraldAccent">{benchmarkResult.qaoa_quantum.best_bitstring === benchmarkResult.classical_baseline.best_bitstring ? 'Exact Match' : 'Differs (QAOA is approximate)'}</td>
                     </tr>
                     <tr>
-                      <td className="p-3 font-semibold">QUBO Objective Energy E(x)</td>
-                      <td className="p-3 font-bold text-accent">{benchmarkResult.qaoa_quantum.objective_value}</td>
-                      <td className="p-3 font-bold text-cyanAccent">{benchmarkResult.classical_baseline.objective_value}</td>
+                      <td className="p-3 font-semibold">Expected Return Objective</td>
+                      <td className="p-3 font-bold text-accent">{benchmarkResult.qaoa_quantum.business_objective ?? '—'}</td>
+                      <td className="p-3 font-bold text-cyanAccent">{benchmarkResult.classical_baseline.business_objective ?? '—'}</td>
                       <td className="p-3">{benchmarkResult.comparison.objective_diff}</td>
                     </tr>
                     <tr>

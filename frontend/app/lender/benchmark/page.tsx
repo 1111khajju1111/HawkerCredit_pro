@@ -120,7 +120,7 @@ export default function BenchmarkPage() {
             </table>
           </div>
 
-          <div className="text-[10px] text-gray-500">Technical QUBO energy remains available in run telemetry; this comparison uses the canonical expected-monetary-return objective.</div>
+          <div className="text-[10px] text-gray-500">Technical QUBO energy is retained in the run telemetry; the comparison above uses the canonical expected-monetary-return objective.</div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="p-4 rounded-xl bg-surfaceLight/60 border border-border">

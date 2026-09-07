@@ -17,12 +17,6 @@ export async function fetchApi<T = any>(endpoint: string, options: RequestInit =
   });
 
   if (!res.ok) {
-    if (res.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('auth_user');
-      window.location.href = '/login';
-      throw new Error('Your session has expired. Please sign in again.');
-    }
     const errorData = await res.json().catch(() => ({ detail: 'API Error' }));
     throw new Error(errorData.detail || 'Network request failed');
   }

@@ -33,6 +33,9 @@ export default function LandingPage() {
           <Link href="/lender/dashboard" className="brutal-btn bg-white text-black dark:bg-black dark:text-white px-6 py-3 text-sm">
             LENDER DASHBOARD
           </Link>
+          <Link href="/voice-demo" className="brutal-btn bg-white text-black dark:bg-black dark:text-white px-6 py-3 text-sm">
+            VOICE ALERTS
+          </Link>
         </div>
       </section>
 

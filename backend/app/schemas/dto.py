@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -6,21 +6,20 @@ from datetime import datetime
 class UserRegister(BaseModel):
     email: EmailStr
     phone: Optional[str] = None
-    password: str = Field(min_length=8, max_length=128)
+    password: str
     role: str = "VENDOR"
 
 class StaffRegister(BaseModel):
     email: EmailStr
     phone: Optional[str] = None
-    password: str = Field(min_length=8, max_length=128)
+    password: str
     role: str
 
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str
 
 class TokenResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     access_token: str
     token_type: str = "bearer"
     user_id: str
@@ -39,7 +38,6 @@ class VendorCreate(BaseModel):
     operating_days: Optional[int] = 6
 
 class VendorResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     vendor_id: str
     user_id: str
     name: str
@@ -68,7 +66,6 @@ class TransactionCreate(BaseModel):
     confidence_score: float = 1.0
 
 class TransactionResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     transaction_id: str
     vendor_id: str
     amount: float
@@ -86,7 +83,6 @@ class ExpenseCreate(BaseModel):
     source: str = "MANUAL"
 
 class ExpenseResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     expense_id: str
     vendor_id: str
     category: str
@@ -104,7 +100,6 @@ class InventoryCreate(BaseModel):
     selling_price: float
 
 class InventoryResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     inventory_id: str
     vendor_id: str
     item_name: str
@@ -116,12 +111,11 @@ class InventoryResponse(BaseModel):
 
 # Loan Schemas
 class LoanCreate(BaseModel):
-    principal: float = Field(gt=0, le=500000)
-    interest_rate: float = Field(default=12.0, ge=0, le=100)
-    due_months: int = Field(default=6, ge=1, le=60)
+    principal: float
+    interest_rate: float = 12.0
+    due_months: int = 6
 
 class LoanResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     loan_id: str
     vendor_id: str
     principal: float
@@ -135,15 +129,7 @@ class LoanResponse(BaseModel):
 class HumanUnderwriteRequest(BaseModel):
     loan_id: str
     decision: str
-    notes: Optional[str] = Field(default=None, max_length=2000)
-
-    @field_validator("decision")
-    @classmethod
-    def validate_decision(cls, value: str) -> str:
-        value = value.upper().strip()
-        if value not in {"APPROVED", "REJECTED", "UNDER_REVIEW"}:
-            raise ValueError("decision must be APPROVED, REJECTED, or UNDER_REVIEW")
-        return value
+    notes: Optional[str] = None
 
 # Voice Transaction Input
 class VoiceTransactionInput(BaseModel):
@@ -169,18 +155,17 @@ class ReceiptOCROutput(BaseModel):
 
 # Quantum Portfolio Request
 class QuantumPortfolioRequest(BaseModel):
-    available_capital: float = Field(default=1000000.0, gt=0, le=100000000)
-    vendor_ids: Optional[List[str]] = Field(default=None, min_length=1, max_length=10)
-    max_exposure_per_vendor: float = Field(default=50000.0, gt=0, le=500000)
-    max_risk_tolerance: float = Field(default=0.25, ge=0, le=1)
-    max_category_concentration: float = Field(default=0.40, gt=0, le=1)
-    p_layers: int = Field(default=2, ge=1, le=4)
-    shots: int = Field(default=1024, ge=128, le=8192)
+    available_capital: float = 1000000.0
+    vendor_ids: Optional[List[str]] = None
+    max_exposure_per_vendor: float = 50000.0
+    max_risk_tolerance: float = 0.25
+    max_category_concentration: float = 0.40
+    p_layers: int = 2
+    shots: int = 1024
     algorithm: str = "QAOA"
 
 # Quantum Run Response DTO
 class QuantumRunResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     run_id: str
     problem_size: int
     number_of_variables: int

@@ -5,7 +5,7 @@ from typing import List
 from app.db.database import get_db
 from app.models.schema import Loan, AuditLog, Vendor
 from app.schemas.dto import LoanCreate, LoanResponse, HumanUnderwriteRequest
-from app.core.security import verify_vendor_access, require_roles, get_current_user
+from app.core.security import verify_vendor_access, require_roles
 from app.core.rate_limit import limiter
 
 router = APIRouter()
@@ -19,7 +19,6 @@ def request_loan(
     loan_in: LoanCreate,
     db: Session = Depends(get_db),
     _: bool = Depends(verify_vendor_access),
-    current_user=Depends(get_current_user),
 ):
     due_date = datetime.utcnow() + timedelta(days=loan_in.due_months * 30)
     loan = Loan(
@@ -33,7 +32,7 @@ def request_loan(
     db.commit()
     db.refresh(loan)
 
-    db.add(AuditLog(user_id=current_user.id, action="LOAN_REQUESTED", resource_type="LOAN", resource_id=loan.loan_id))
+    db.add(AuditLog(user_id=vendor_id, action="LOAN_REQUESTED", resource_type="LOAN", resource_id=loan.loan_id))
     db.commit()
 
     return loan

@@ -153,10 +153,10 @@ def build_portfolio_qubo(
     lambda_risk: float = 2.5,
     lambda_capital: float = 6.0,
     lambda_concentration: float = 3.0,
-    capital_slack_bits: int = 2,
-    risk_slack_bits: int = 2,
-    concentration_slack_bits: int = 1,
-    max_concentration_categories: int = 2,
+    capital_slack_bits: int = 3,
+    risk_slack_bits: int = 3,
+    concentration_slack_bits: int = 2,
+    max_concentration_categories: int = 4,
 ) -> Tuple[np.ndarray, Dict[str, Any], List[str]]:
     """
     Build a constrained QUBO for lender portfolio allocation.
@@ -320,15 +320,13 @@ def build_portfolio_qubo(
         remaining_budget // max(1, concentration_slack_bits),
     )
 
-    penalized_categories = unique_categories
+    penalized_categories = unique_categories[
+        :effective_max_categories
+    ]
 
-    excluded_categories = []
-    if len(penalized_categories) > max_concentration_categories:
-        raise ValueError(
-            f"QUBO candidate subproblem has {len(penalized_categories)} categories, "
-            f"but max_concentration_categories={max_concentration_categories}. "
-            "Select a smaller, category-bounded candidate set."
-        )
+    excluded_categories = unique_categories[
+        effective_max_categories:
+    ]
 
     # ------------------------------------------------------------------
     # Variable layout

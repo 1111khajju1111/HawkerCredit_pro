@@ -307,8 +307,6 @@ def _seed_vendor_financials(db, vendor, idx, now):
 
 
 def ensure_demo_dataset():
-    # Stable synthetic dataset generation for reproducible hackathon demos.
-    random.seed(20260907)
     db = SessionLocal()
     try:
         _ensure_admin(db)
