@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -15,31 +16,49 @@ from app.api.v1 import (
     loans, ai, credit, quantum, portfolio, consent, audit, admin
 )
 
-# Initialize database tables and register the persisted credit model.
+# Table creation is fast and synchronous - fine to run at import time,
+# well before the slow work below.
 Base.metadata.create_all(bind=engine)
-try:
-    with SessionLocal() as _startup_db:
-        register_persisted_model(_startup_db)
-except Exception as _startup_error:
-    # The API must still start if model registration is temporarily unavailable.
-    print(f"Startup model registration warning: {_startup_error}")
 
-# Demo environments can opt into an idempotent synthetic dataset on startup.
-# This never clears existing rows. Enabled by default in the production-demo bundle; set DEMO_SEED_ON_STARTUP=false for a clean non-demo deployment.
-if os.getenv("DEMO_SEED_ON_STARTUP", "true").lower() in {"1", "true", "yes"}:
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # IMPORTANT: this runs AFTER uvicorn has already bound the port and
+    # started accepting TCP connections, but BEFORE the app serves any
+    # HTTP requests. Model registration (which may train a fresh model on
+    # a completely cold deploy) and demo-data seeding (creating 100
+    # vendors with credit scoring + SHAP explanations - a few seconds on
+    # a normal machine, but can take much longer on a throttled free-tier
+    # CPU) both used to run at MODULE IMPORT TIME, before uvicorn could
+    # bind the port at all. On a slow host that meant the port never
+    # opened within the platform's health-check window, and the deploy
+    # was killed even though the app would have started fine given more
+    # time. Moving this work here means the port opens immediately;
+    # requests that arrive before startup finishes will simply wait
+    # rather than the whole deploy being torn down.
     try:
-        ensure_demo_dataset()
-    except Exception as _demo_seed_error:
-        # A seeding problem must not hide the model-registration result or
-        # prevent the API from starting; the failure remains visible in logs.
-        print(f"Startup demo-data seeding warning: {_demo_seed_error}")
+        with SessionLocal() as _startup_db:
+            register_persisted_model(_startup_db)
+    except Exception as _startup_error:
+        print(f"Startup model registration warning: {_startup_error}")
+
+    if os.getenv("DEMO_SEED_ON_STARTUP", "true").lower() in {"1", "true", "yes"}:
+        try:
+            ensure_demo_dataset()
+        except Exception as _demo_seed_error:
+            print(f"Startup demo-data seeding warning: {_demo_seed_error}")
+
+    yield
+    # (no shutdown work needed)
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Rate limiting protects authentication and resource-intensive financial/quantum endpoints.
@@ -69,18 +88,6 @@ app.include_router(portfolio.router, prefix=f"{settings.API_V1_STR}/portfolio", 
 app.include_router(consent.router, prefix=f"{settings.API_V1_STR}/consent", tags=["Consent Management"])
 app.include_router(audit.router, prefix=f"{settings.API_V1_STR}/audit-logs", tags=["Audit Logging"])
 app.include_router(admin.router, prefix=f"{settings.API_V1_STR}/admin", tags=["Admin & Model Monitoring"])
-
-# Root route: keeps platform default health checks (Render) and stray
-# browser/UptimeRobot hits against "/" from 404ing.
-@app.get("/")
-def root():
-    return {
-        "service": settings.PROJECT_NAME,
-        "version": settings.VERSION,
-        "status": "HEALTHY",
-        "docs": "/docs",
-        "health": "/health",
-    }
 
 # Health Check Endpoints
 @app.get("/health")
