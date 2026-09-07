@@ -5,13 +5,21 @@ from app.core.config import settings
 from app.models.schema import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
+
+# SQLAlchemy 2.x does not recognize the legacy ``postgres://`` dialect name.
+# Render/Postgres connection strings may use that prefix, so normalize it
+# before Alembic creates the engine.
+database_url = settings.DATABASE_URL
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 if config.config_file_name:
     fileConfig(config.config_file_name)
 target_metadata = Base.metadata
 
 def run_migrations_offline():
-    context.configure(url=settings.DATABASE_URL, target_metadata=target_metadata, literal_binds=True, dialect_opts={"paramstyle": "named"})
+    context.configure(url=database_url, target_metadata=target_metadata, literal_binds=True, dialect_opts={"paramstyle": "named"})
     with context.begin_transaction(): context.run_migrations()
 
 def run_migrations_online():
