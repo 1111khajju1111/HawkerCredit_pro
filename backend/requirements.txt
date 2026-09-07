@@ -1,0 +1,33 @@
+fastapi>=0.104.0
+uvicorn>=0.24.0
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+pydantic>=2.4.0
+pydantic[email]>=2.4.0
+pydantic-settings>=2.0.0
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.1,<4.1.0
+python-multipart>=0.0.6
+scikit-learn==1.7.2
+pandas>=2.1.0
+numpy>=1.26.0
+scipy>=1.11.0
+pytest>=7.4.0
+httpx>=0.25.0
+qiskit>=1.0.0
+qiskit-aer>=0.13.0
+shap>=0.44.0
+
+slowapi>=0.1.9
+
+# Optional: enables REAL OCR on uploaded receipt photos (backend/app/ai/ocr_receipt.py).
+# pytesseract is only a Python wrapper -- the Tesseract OCR ENGINE itself is a
+# separate system binary and is NOT installed by pip. On Debian/Ubuntu (e.g. most
+# Render/Railway build images): `apt-get install -y tesseract-ocr`. Without the
+# binary, the app still runs correctly -- ocr_receipt.py catches the failure and
+# transparently falls back to the deterministic demo parser (see
+# extraction_method in its response).
+pytesseract>=0.3.10
+Pillow>=10.0.0
+psycopg2-binary>=2.9.9
